@@ -23,9 +23,12 @@ from app.routers import documents, chat
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """Validate config and pre-load the embedding model on startup."""
+    """Validate config and attempt to pre-load the embedding model on startup."""
+    import logging
     from app.core.config import get_settings
     from app.services.embeddings import embed_texts
+
+    logger = logging.getLogger(__name__)
 
     settings = get_settings()
     if not settings.GROQ_API_KEY:
@@ -33,8 +36,14 @@ async def lifespan(app: FastAPI):
             "GROQ_API_KEY is not set. Add it to .env or your environment variables."
         )
 
-    # Warm up with a dummy embedding
-    embed_texts(["warmup"])
+    # Attempt to warm up the embedding model. If the download fails
+    # (e.g. HuggingFace 504), let the app start anyway — the model will
+    # be downloaded lazily on the first embedding request.
+    try:
+        embed_texts(["warmup"])
+    except Exception:
+        logger.warning("Embedding model warmup failed; will retry on first request")
+
     yield
 
 
