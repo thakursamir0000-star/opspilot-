@@ -22,7 +22,20 @@ def _get_model() -> TextEmbedding:
     global _model
     if _model is None:
         settings = get_settings()
-        _model = TextEmbedding(settings.EMBEDDING_MODEL)
+        import time
+        last_err = None
+        for attempt in range(3):
+            try:
+                _model = TextEmbedding(settings.EMBEDDING_MODEL)
+                return _model
+            except Exception as e:
+                last_err = e
+                print(f"[embeddings] Model load attempt {attempt + 1}/3 failed: {e}")
+                if attempt < 2:
+                    time.sleep(2)
+        raise RuntimeError(
+            f"Could not load model {settings.EMBEDDING_MODEL} after 3 attempts: {last_err}"
+        )
     return _model
 
 
