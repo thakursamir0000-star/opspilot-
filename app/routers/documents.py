@@ -7,6 +7,7 @@ GET  /documents       — list documents for a session
 
 from __future__ import annotations
 
+import logging
 import uuid
 from typing import List
 
@@ -17,6 +18,8 @@ from app.models.schemas import DocumentInfo, UploadResponse, DocumentListRespons
 from app.services.ingestion import process_pdf
 from app.services.embeddings import embed_texts
 from app.services import vectorstore
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/documents", tags=["documents"])
 
@@ -93,7 +96,7 @@ async def upload_documents(
             ))
 
         except Exception as e:
-            # Record the failure but don't crash the whole upload
+            logger.exception("Failed to process upload for %s", filename)
             doc_id = str(uuid.uuid4())
             doc_record = DocumentRecord(
                 doc_id=doc_id,
@@ -109,7 +112,7 @@ async def upload_documents(
                 filename=filename,
                 num_pages=0,
                 num_chunks=0,
-                status="error",
+                status=f"error: {str(e)[:200]}",
             ))
 
     return UploadResponse(documents=results)
