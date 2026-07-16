@@ -9,15 +9,18 @@ Strategy:
 
 from __future__ import annotations
 
+import io
+import logging
 import uuid
 from dataclasses import dataclass
 from typing import List, Tuple
 
 # pyrefly: ignore [missing-import]
 from pypdf import PdfReader
-import io
 
 from app.core.config import get_settings
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -45,14 +48,18 @@ def extract_text_from_pdf(file_bytes: bytes, filename: str) -> Tuple[List[PageTe
     """
     reader = PdfReader(io.BytesIO(file_bytes))
     pages: List[PageText] = []
+    total = len(reader.pages)
+    logger.info("PDF %s: %d pages, encrypted=%s", filename, total, reader.is_encrypted)
 
     for i, page in enumerate(reader.pages):
         text = page.extract_text() or ""
         text = text.strip()
+        logger.info("  Page %d: %d chars extracted", i + 1, len(text))
         if text:
             pages.append(PageText(page_number=i + 1, text=text))
 
-    return pages, len(reader.pages)
+    logger.info("PDF %s: %d/%d pages had extractable text", filename, len(pages), total)
+    return pages, total
 
 
 def chunk_pages(
@@ -121,7 +128,9 @@ def process_pdf(file_bytes: bytes, filename: str) -> Tuple[List[Chunk], int, str
     pages, total_pages = extract_text_from_pdf(file_bytes, filename)
 
     if not pages:
+        logger.warning("PDF %s: no text extracted from any page", filename)
         return [], total_pages, "no_text_extracted"
 
     chunks = chunk_pages(pages, filename, doc_id)
+    logger.info("PDF %s: produced %d chunks from %d pages", filename, len(chunks), len(pages))
     return chunks, total_pages, "ready"
