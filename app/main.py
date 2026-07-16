@@ -74,6 +74,46 @@ async def health():
     return {"status": "ok"}
 
 
+@app.get("/health/debug")
+async def health_debug():
+    """Diagnostic endpoint — checks that key dependencies are importable and functional."""
+    checks = {}
+
+    # Check pypdf
+    try:
+        from pypdf import PdfReader
+        checks["pypdf"] = "ok"
+    except Exception as e:
+        checks["pypdf"] = f"error: {e}"
+
+    # Check fastembed
+    try:
+        from fastembed import TextEmbedding
+        checks["fastembed_import"] = "ok"
+    except Exception as e:
+        checks["fastembed_import"] = f"error: {e}"
+
+    # Check fastembed model loading + embedding
+    try:
+        from app.services.embeddings import embed_texts
+        import numpy as np
+        result = embed_texts(["test"])
+        checks["fastembed_embed"] = f"ok — shape={result.shape}, dtype={result.dtype}"
+    except Exception as e:
+        checks["fastembed_embed"] = f"error: {e}"
+
+    # Check faiss
+    try:
+        import faiss
+        index = faiss.IndexFlatIP(384)
+        checks["faiss"] = f"ok — ntotal={index.ntotal}"
+    except Exception as e:
+        checks["faiss"] = f"error: {e}"
+
+    return checks
+
+
+
 # ── Static frontend ─────────────────────────────────────────────────────────
 # Serve index.html at / and other static assets from the frontend directory.
 FRONTEND_DIR = Path(__file__).resolve().parent.parent / "frontend"

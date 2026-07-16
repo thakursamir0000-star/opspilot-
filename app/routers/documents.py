@@ -52,17 +52,27 @@ async def upload_documents(
         # Read file contents
         file_bytes = await upload_file.read()
 
-        try:
-            # Extract and chunk
-            chunks, total_pages, status = process_pdf(file_bytes, filename)
-            doc_id = chunks[0].doc_id if chunks else str(uuid.uuid4())
+        # Stage 1: Extract and chunk (captures page count even if embedding fails)
+        total_pages = 0
+        chunks = []
+        status = "error"
+        doc_id = str(uuid.uuid4())
 
-            if chunks:
-                # Embed all chunk texts
+        try:
+            chunks, total_pages, status = process_pdf(file_bytes, filename)
+            doc_id = chunks[0].doc_id if chunks else doc_id
+            logger.info("PDF %s: extraction OK — %d pages, %d chunks, status=%s",
+                        filename, total_pages, len(chunks), status)
+        except Exception as e:
+            logger.exception("Failed to extract text from %s", filename)
+            status = f"error: extraction failed — {str(e)[:150]}"
+
+        # Stage 2: Embed and index (only if extraction produced chunks)
+        if chunks and not status.startswith("error"):
+            try:
                 texts = [c.text for c in chunks]
                 vectors = embed_texts(texts)
 
-                # Build ChunkRecords and add to session
                 chunk_records = [
                     ChunkRecord(
                         text=c.text,
@@ -74,46 +84,31 @@ async def upload_documents(
                 ]
                 session.chunks.extend(chunk_records)
 
-                # Add vectors to FAISS index
                 vectorstore.add_vectors(session.faiss_index, vectors, chunk_records)
+                logger.info("PDF %s: embedding + indexing OK (%d vectors)",
+                            filename, len(chunk_records))
+            except Exception as e:
+                logger.exception("Failed to embed/index %s", filename)
+                status = f"error: embedding failed — {str(e)[:150]}"
+                chunks = []  # clear chunks since they weren't indexed
 
-            # Record the document
-            doc_record = DocumentRecord(
-                doc_id=doc_id,
-                filename=filename,
-                num_pages=total_pages,
-                num_chunks=len(chunks),
-                status=status,
-            )
-            session.documents.append(doc_record)
+        # Record the document (always, even on error)
+        doc_record = DocumentRecord(
+            doc_id=doc_id,
+            filename=filename,
+            num_pages=total_pages,
+            num_chunks=len(chunks),
+            status=status,
+        )
+        session.documents.append(doc_record)
 
-            results.append(DocumentInfo(
-                doc_id=doc_id,
-                filename=filename,
-                num_pages=total_pages,
-                num_chunks=len(chunks),
-                status=status,
-            ))
-
-        except Exception as e:
-            logger.exception("Failed to process upload for %s", filename)
-            doc_id = str(uuid.uuid4())
-            doc_record = DocumentRecord(
-                doc_id=doc_id,
-                filename=filename,
-                num_pages=0,
-                num_chunks=0,
-                status="error",
-            )
-            session.documents.append(doc_record)
-
-            results.append(DocumentInfo(
-                doc_id=doc_id,
-                filename=filename,
-                num_pages=0,
-                num_chunks=0,
-                status=f"error: {str(e)[:200]}",
-            ))
+        results.append(DocumentInfo(
+            doc_id=doc_id,
+            filename=filename,
+            num_pages=total_pages,
+            num_chunks=len(chunks),
+            status=status,
+        ))
 
     return UploadResponse(documents=results)
 

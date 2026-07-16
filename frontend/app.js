@@ -157,10 +157,11 @@
                 showError(`Warning: No text extracted from ${names}. These may be scanned/image PDFs.`, 8000);
             }
 
-            const errors = data.documents.filter(d => d.status === 'error');
+            const errors = data.documents.filter(d => d.status.startsWith('error'));
             if (errors.length > 0) {
-                const names = errors.map(d => d.filename).join(', ');
-                showError(`Error processing: ${names}`, 8000);
+                errors.forEach(d => {
+                    showError(`Error processing ${d.filename}: ${d.status}`, 10000);
+                });
             }
 
             // Refresh document list
@@ -230,19 +231,24 @@
             info.appendChild(name);
             info.appendChild(meta);
 
-            // Warning for no_text_extracted
+            // Warning for no_text_extracted or error
             if (doc.status === 'no_text_extracted') {
                 const warning = document.createElement('div');
                 warning.className = 'doc-warning';
                 warning.textContent = '⚠ No text extracted';
                 info.appendChild(warning);
+            } else if (doc.status.startsWith('error')) {
+                const warning = document.createElement('div');
+                warning.className = 'doc-warning';
+                warning.textContent = '⚠ ' + doc.status;
+                info.appendChild(warning);
             }
 
             const status = document.createElement('div');
-            status.className = `doc-status ${doc.status}`;
+            status.className = `doc-status ${doc.status.startsWith('error') ? 'error' : doc.status}`;
             status.title = doc.status === 'ready' ? 'Ready'
                 : doc.status === 'no_text_extracted' ? 'No text extracted (scanned PDF?)'
-                : doc.status === 'error' ? 'Processing error'
+                : doc.status.startsWith('error') ? doc.status
                 : doc.status;
 
             item.appendChild(icon);
