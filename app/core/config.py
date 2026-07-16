@@ -22,7 +22,7 @@ class Settings(BaseSettings):
     SIMILARITY_THRESHOLD: float = 0.25
 
     # --- Embedding model ---
-    EMBEDDING_MODEL: str = "sentence-transformers/all-MiniLM-L6-v2"
+    EMBEDDING_MODEL: str = "BAAI/bge-small-en-v1.5"
     EMBEDDING_DIM: int = 384
 
     # --- History ---

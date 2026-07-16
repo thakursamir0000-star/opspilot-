@@ -1,27 +1,28 @@
 """
-SentenceTransformer embedding wrapper.
+fastembed embedding wrapper.
 
-Uses all-MiniLM-L6-v2 (384-dim) — free, local, no API cost.
+Uses BAAI/bge-small-en-v1.5 (384-dim, ONNX-quantized) — free, local, no API cost.
+~4x lighter than sentence-transformers + torch. Fits in 512MB RAM.
 The model is loaded lazily on first call and cached for the process lifetime.
 """
 
 from __future__ import annotations
 
 import numpy as np
-from sentence_transformers import SentenceTransformer
+from fastembed import TextEmbedding
 
 from app.core.config import get_settings
 
 # Module-level cache for the model
-_model: SentenceTransformer | None = None
+_model: TextEmbedding | None = None
 
 
-def _get_model() -> SentenceTransformer:
-    """Lazy-load the embedding model (heavy first call, then cached)."""
+def _get_model() -> TextEmbedding:
+    """Lazy-load the embedding model (first call downloads ~130MB ONNX, then cached)."""
     global _model
     if _model is None:
         settings = get_settings()
-        _model = SentenceTransformer(settings.EMBEDDING_MODEL)
+        _model = TextEmbedding(settings.EMBEDDING_MODEL)
     return _model
 
 
@@ -34,14 +35,15 @@ def embed_texts(texts: list[str]) -> np.ndarray:
         so that inner product == cosine similarity.
     """
     model = _get_model()
-    embeddings = model.encode(texts, convert_to_numpy=True, show_progress_bar=False)
+    embeddings = list(model.embed(texts))
+    arr = np.array(embeddings, dtype=np.float32)
 
     # Normalize for cosine similarity via IndexFlatIP
-    norms = np.linalg.norm(embeddings, axis=1, keepdims=True)
+    norms = np.linalg.norm(arr, axis=1, keepdims=True)
     norms = np.where(norms == 0, 1, norms)  # avoid division by zero
-    embeddings = embeddings / norms
+    arr = arr / norms
 
-    return embeddings.astype(np.float32)
+    return arr
 
 
 def embed_query(query: str) -> np.ndarray:
